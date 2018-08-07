@@ -29,14 +29,14 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
     let src = fs::File::open(&from)?;
 
     let src_integrity_info = src.get_integrity_information()?;
-    if src_integrity_info.ClusterSizeInBytes == 0 {
-        // fast path for non windows server
-        // no cluster size reported, we assume reflinking is not supported
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Operation not supported",
-        ));
-    }
+    // if src_integrity_info.ClusterSizeInBytes == 0 {
+    //     // fast path for non windows server
+    //     // no cluster size reported, we assume reflinking is not supported
+    //     return Err(io::Error::new(
+    //         io::ErrorKind::Other,
+    //         "Operation not supported",
+    //     ));
+    // }
 
     let src_metadata = src.metadata()?;
     let src_file_size = src_metadata.file_size();
@@ -51,28 +51,54 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
         try_cleanup!(dest.set_sparse(), to);
     }
 
-    // Copy over integrity information. Not sure if this is required.
-    let mut dest_integrity_info = ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER {
-        ChecksumAlgorithm: src_integrity_info.ChecksumAlgorithm,
-        Reserved: src_integrity_info.Reserved,
-        Flags: src_integrity_info.Flags,
-    };
-    try_cleanup!(dest.set_integrity_information(&mut dest_integrity_info), to);
+    if src_integrity_info.ClusterSizeInBytes != 0 {
+        // Copy over integrity information. Not sure if this is required.
+        let mut dest_integrity_info = ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER {
+            ChecksumAlgorithm: src_integrity_info.ChecksumAlgorithm,
+            Reserved: src_integrity_info.Reserved,
+            Flags: src_integrity_info.Flags,
+        };
+        try_cleanup!(dest.set_integrity_information(&mut dest_integrity_info), to);
+    }
 
     // file_size must be sufficient to hold the data.
+    // TODO test if the current implementation works:
+    // Later on, we round up the bytes to copy in order to end at a cluster boundary.
+    // This might very well result in us cloning past the file end.
+    // Let's hope windows api sanitizes this, because otherwise a clean implementation is not really possible.
     try_cleanup!(dest.set_len(src_file_size), to);
 
     // Preparation done, now reflink
-    let split_threshold: u32 = 0u32.wrapping_sub(src_integrity_info.ClusterSizeInBytes);
     let mut dup_extent: ffi::DUPLICATE_EXTENTS_DATA = unsafe { mem::uninitialized() };
     dup_extent.FileHandle = src.as_raw_handle();
-    let mut remain = round_up(src_file_size as i64, src_integrity_info.ClusterSizeInBytes);
-    let mut offset = 0;
-    while remain > 0 {
+
+    // We must end at a cluster boundary
+    let total_copy_len: i64 = {
+        if src_integrity_info.ClusterSizeInBytes == 0 {
+            src_file_size as i64
+        } else {
+            // Round to the next cluster size
+            round_up(src_file_size as u64, src_integrity_info.ClusterSizeInBytes as u64) as i64
+        }
+    };
+
+    let mut bytes_copied = 0;
+    // Must be smaller than 4GB; This is always a multiple of ClusterSize
+    let max_copy_len: i64 = if src_integrity_info.ClusterSizeInBytes == 0 {
+        total_copy_len
+    } else {
+        (4 * 1024 * 1024 * 1024) - src_integrity_info.ClusterSizeInBytes
+    };
+    while bytes_copied < total_copy_len {
+        let bytes_to_copy = cmp::min(total_copy_len, max_copy_len);
+        if src_integrity_info.ClusterSizeInBytes != 0 {
+            debug_assert_eq!(bytes_to_copy % src_integrity_info.ClusterSizeInBytes, 0);
+            debug_assert_eq!(bytes_copied % src_integrity_info.ClusterSizeInBytes, 0);
+        }
         unsafe {
-            *dup_extent.SourceFileOffset.QuadPart_mut() = offset;
-            *dup_extent.TargetFileOffset.QuadPart_mut() = offset;
-            *dup_extent.ByteCount.QuadPart_mut() = cmp::min(split_threshold as i64, remain);
+            *dup_extent.SourceFileOffset.QuadPart_mut() = bytes_copied;
+            *dup_extent.TargetFileOffset.QuadPart_mut() = bytes_copied;
+            *dup_extent.ByteCount.QuadPart_mut() = bytes_to_copy;
         }
         let mut bytes_returned = 0u32;
         let res = unsafe {
@@ -91,8 +117,7 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
             let _ = fs::remove_file(to);
             return Err(io::Error::last_os_error());
         }
-        remain -= split_threshold as i64;
-        offset += split_threshold as i64;
+        bytes_copied += bytes_to_copy;
     }
     Ok(())
 }
@@ -176,9 +201,10 @@ impl FileExt for fs::File {
     }
 }
 
-fn round_up(number: i64, num_digits: u32) -> i64 {
-    let num_digits = num_digits as i64;
-    (number + num_digits - 1) / num_digits * num_digits
+/// Rounds `num_to_round` to the next multiple of `multiple`, if `mutliple is a power of 2`
+fn round_up(num_to_round: u64, multiple: u64) -> u64 {
+    assert!(multiple && ((multiple & (multiple - 1)) == 0));
+    (num_to_round + multiple - 1) & -multiple
 }
 
 /// Contains definitions not included in winapi
