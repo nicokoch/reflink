@@ -1,6 +1,8 @@
 use std::io;
 use std::path::Path;
 
+use libc;
+
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()> {
     use std::fs;
