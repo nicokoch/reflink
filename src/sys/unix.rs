@@ -4,7 +4,7 @@ use std::path::Path;
 use libc;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
-pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()> {
+pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     use std::fs;
     use std::os::unix::io::AsRawFd;
 
@@ -34,7 +34,7 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
 }
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()> {
+pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
@@ -69,7 +69,7 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios")))]
-pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()> {
+pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     return Err(io::Error::new(
         io::ErrorKind::Other,
         "Operation not supported",

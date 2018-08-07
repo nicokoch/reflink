@@ -26,7 +26,7 @@ macro_rules! try_cleanup {
     };
 }
 
-pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()> {
+pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     // Inspired by https://github.com/0xbadfca11/reflink/blob/master/reflink.cpp
     let src = fs::File::open(&from)?;
 
@@ -45,6 +45,8 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
     }
     let cluster_size = src_integrity_info.ClusterSizeInBytes as i64;
     if cluster_size != 0 {
+        // Cluster size must either be 4K or 64K (restricted by ReFS)
+        assert!(cluster_size == 4 * 1024 || cluster_size == 64 * 1024);
         // Copy over integrity information. Not sure if this is required.
         let mut dest_integrity_info = ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER {
             ChecksumAlgorithm: src_integrity_info.ChecksumAlgorithm,
@@ -84,7 +86,7 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
     };
     while bytes_copied < total_copy_len {
         let bytes_to_copy = cmp::min(total_copy_len, max_copy_len);
-        if src_integrity_info.ClusterSizeInBytes != 0 {
+        if cluster_size != 0 {
             debug_assert_eq!(bytes_to_copy % cluster_size, 0);
             debug_assert_eq!(bytes_copied % cluster_size, 0);
         }
