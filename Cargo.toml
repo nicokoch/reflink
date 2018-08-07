@@ -7,4 +7,4 @@ authors = ["Nicolas Koch <nioko1337@gmail.com>"]
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["ioapiset", "winioctl"] }
+winapi = { version = "0.3", features = ["ioapiset", "winioctl", "fileapi"] }

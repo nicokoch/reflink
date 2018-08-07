@@ -8,8 +8,10 @@ use std::path::Path;
 use std::ptr;
 
 use winapi::um::ioapiset::DeviceIoControl;
+use winapi::um::fileapi::GetVolumeInformationByHandleW;
 use winapi::um::winioctl::{FSCTL_SET_SPARSE, FSCTL_GET_INTEGRITY_INFORMATION, FSCTL_SET_INTEGRITY_INFORMATION};
-use winapi::um::winnt::FILE_ATTRIBUTE_SPARSE_FILE;
+use winapi::um::winnt::{FILE_ATTRIBUTE_SPARSE_FILE, FILE_SUPPORTS_BLOCK_REFCOUNTING};
+
 
 
 macro_rules! try_cleanup {
@@ -29,15 +31,6 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
     let src = fs::File::open(&from)?;
 
     let src_integrity_info = src.get_integrity_information()?;
-    // if src_integrity_info.ClusterSizeInBytes == 0 {
-    //     // fast path for non windows server
-    //     // no cluster size reported, we assume reflinking is not supported
-    //     return Err(io::Error::new(
-    //         io::ErrorKind::Other,
-    //         "Operation not supported",
-    //     ));
-    // }
-
     let src_metadata = src.metadata()?;
     let src_file_size = src_metadata.file_size();
     let src_is_sparse = src_metadata.file_attributes() & FILE_ATTRIBUTE_SPARSE_FILE > 0;
@@ -50,8 +43,8 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
     if src_is_sparse {
         try_cleanup!(dest.set_sparse(), to);
     }
-
-    if src_integrity_info.ClusterSizeInBytes != 0 {
+    let cluster_size = src_integrity_info.ClusterSizeInBytes as i64;
+    if cluster_size != 0 {
         // Copy over integrity information. Not sure if this is required.
         let mut dest_integrity_info = ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER {
             ChecksumAlgorithm: src_integrity_info.ChecksumAlgorithm,
@@ -74,26 +67,26 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
 
     // We must end at a cluster boundary
     let total_copy_len: i64 = {
-        if src_integrity_info.ClusterSizeInBytes == 0 {
+        if cluster_size == 0 {
             src_file_size as i64
         } else {
             // Round to the next cluster size
-            round_up(src_file_size as u64, src_integrity_info.ClusterSizeInBytes as u64) as i64
+            round_up(src_file_size as i64, cluster_size)
         }
     };
 
     let mut bytes_copied = 0;
     // Must be smaller than 4GB; This is always a multiple of ClusterSize
-    let max_copy_len: i64 = if src_integrity_info.ClusterSizeInBytes == 0 {
+    let max_copy_len: i64 = if cluster_size == 0 {
         total_copy_len
     } else {
-        (4 * 1024 * 1024 * 1024) - src_integrity_info.ClusterSizeInBytes
+        (4 * 1024 * 1024 * 1024) - cluster_size
     };
     while bytes_copied < total_copy_len {
         let bytes_to_copy = cmp::min(total_copy_len, max_copy_len);
         if src_integrity_info.ClusterSizeInBytes != 0 {
-            debug_assert_eq!(bytes_to_copy % src_integrity_info.ClusterSizeInBytes, 0);
-            debug_assert_eq!(bytes_copied % src_integrity_info.ClusterSizeInBytes, 0);
+            debug_assert_eq!(bytes_to_copy % cluster_size, 0);
+            debug_assert_eq!(bytes_copied % cluster_size, 0);
         }
         unsafe {
             *dup_extent.SourceFileOffset.QuadPart_mut() = bytes_copied;
@@ -113,7 +106,7 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
                 ptr::null_mut(),
             )
         };
-        if res != 0 {
+        if res == 0 {
             let _ = fs::remove_file(to);
             return Err(io::Error::last_os_error());
         }
@@ -130,6 +123,7 @@ trait FileExt {
         &self,
         integrity_info: &mut ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER,
     ) -> io::Result<()>;
+    fn is_block_cloning_supported(&self) -> io::Result<bool>;
 }
 
 impl FileExt for fs::File {
@@ -147,7 +141,7 @@ impl FileExt for fs::File {
                 ptr::null_mut(),
             )
         };
-        if res != 0 {
+        if res == 0 {
             Err(io::Error::last_os_error())
         } else {
             Ok(())
@@ -168,8 +162,7 @@ impl FileExt for fs::File {
                 &mut bytes_returned as *mut _,
                 ptr::null_mut(),
             );
-            println!("{:?}", res);
-            if res != 0 {
+            if res == 0 {
                 Err(io::Error::last_os_error())
             } else {
                 Ok(integrity_info)
@@ -193,17 +186,34 @@ impl FileExt for fs::File {
                 ptr::null_mut(),
             )
         };
-        if res != 0 {
+        if res == 0 {
             Err(io::Error::last_os_error())
         } else {
             Ok(())
         }
     }
+
+    fn is_block_cloning_supported(&self) -> io::Result<bool> {
+        let mut flags = 0u32;
+        let res = unsafe {
+            GetVolumeInformationByHandleW(self.as_raw_handle() as _, ptr::null_mut(), 0, ptr::null_mut(), ptr::null_mut(), &mut flags as *mut _, ptr::null_mut(), 0)
+        };
+        if res == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            println!("{:b}", flags);
+            if flags & FILE_SUPPORTS_BLOCK_REFCOUNTING > 0 {
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+    }
 }
 
 /// Rounds `num_to_round` to the next multiple of `multiple`, if `mutliple is a power of 2`
-fn round_up(num_to_round: u64, multiple: u64) -> u64 {
-    assert!(multiple && ((multiple & (multiple - 1)) == 0));
+fn round_up(num_to_round: i64, multiple: i64) -> i64 {
+    assert!(multiple != 0 && ((multiple & (multiple - 1)) == 0));
     (num_to_round + multiple - 1) & -multiple
 }
 
