@@ -7,12 +7,12 @@ use std::os::windows::io::AsRawHandle;
 use std::path::Path;
 use std::ptr;
 
-use winapi::um::ioapiset::DeviceIoControl;
 use winapi::um::fileapi::GetVolumeInformationByHandleW;
-use winapi::um::winioctl::{FSCTL_SET_SPARSE, FSCTL_GET_INTEGRITY_INFORMATION, FSCTL_SET_INTEGRITY_INFORMATION};
+use winapi::um::ioapiset::DeviceIoControl;
+use winapi::um::winioctl::{
+    FSCTL_GET_INTEGRITY_INFORMATION, FSCTL_SET_INTEGRITY_INFORMATION, FSCTL_SET_SPARSE,
+};
 use winapi::um::winnt::{FILE_ATTRIBUTE_SPARSE_FILE, FILE_SUPPORTS_BLOCK_REFCOUNTING};
-
-
 
 macro_rules! try_cleanup {
     ($expr:expr, $dest:ident) => {
@@ -198,7 +198,16 @@ impl FileExt for fs::File {
     fn is_block_cloning_supported(&self) -> io::Result<bool> {
         let mut flags = 0u32;
         let res = unsafe {
-            GetVolumeInformationByHandleW(self.as_raw_handle() as _, ptr::null_mut(), 0, ptr::null_mut(), ptr::null_mut(), &mut flags as *mut _, ptr::null_mut(), 0)
+            GetVolumeInformationByHandleW(
+                self.as_raw_handle() as _,
+                ptr::null_mut(),
+                0,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &mut flags as *mut _,
+                ptr::null_mut(),
+                0,
+            )
         };
         if res == 0 {
             Err(io::Error::last_os_error())

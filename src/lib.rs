@@ -1,11 +1,40 @@
-#[cfg(unix)] extern crate libc;
-#[cfg(windows)] extern crate winapi;
+//! Some file systems implement COW (copy on write) functionality in order to speed up file copies.
+//! On a high level, the new file does not actually get copied, but shares the same on-disk data
+//! with the source file. As soon as one of the files is modified, the actual copying is done by
+//! the underlying OS.
+//!
+//! This library exposes a single function, `reflink`, which attempts to copy a file using the
+//! underlying OSs' block cloning capabilities. The function signature is identical to `std::fs::copy`.
+//!
+//! At the moment Linux, Android, OSX, ios and Windows are supported.
+//! As soon as other OS support the functionality, support will be added.
+
+#[cfg(unix)]
+extern crate libc;
+#[cfg(windows)]
+extern crate winapi;
 
 mod sys;
 
 use std::io;
 use std::path::Path;
 
+/// Copies a file using COW semantics.
+///
+/// For compability reasons with macos, the target file will be created using `OpenOptions::create_new`.
+/// If you want to overwrite existing files, make sure you manually delete the target file first
+/// if it exists.
+///
+/// # Implementation details per platform
+/// ## Linux / Android
+/// Uses `ioctl_ficlone`. Supported file systems include btrfs and XFS (and maybe more in the future).
+/// ## OS X / ios
+/// Uses `clonefile` library function. This is supported on OS X Version >=10.12 and iOS version >= 10.0
+/// This will work on APFS partitions (which means most desktop systems are capable).
+/// ## Windows
+/// Uses ioctl `FSCTL_DUPLICATE_EXTENTS_TO_FILE`.
+/// Only supports ReFS on Windows Server. *Important note*: The windows implementation is currently
+/// untested and probably buggy. Contributions/testers with access to a Windows Server welcome.
 pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()> {
     let (from, to) = (from.as_ref(), to.as_ref());
     if !from.is_file() {
@@ -15,14 +44,4 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
         ));
     }
     sys::reflink(from, to)
-}
-
-#[cfg(test)]
-mod test {
-    use super::reflink;
-    #[test]
-    fn test_reflink() {
-        let res = reflink("src/lib.rs", "reflink_lib.rs");
-        println!("{:?}", res);
-    }
 }
