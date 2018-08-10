@@ -2,6 +2,14 @@
 name = "reflink"
 version = "0.1.0"
 authors = ["Nicolas Koch <nioko1337@gmail.com>"]
+description = "copy-on-write mechanism on supported file systems"
+# documentation = "..."
+homepage = "https://github.com/nicokoch/reflink"
+repository = "https://github.com/nicokoch/reflink"
+readme = "README.md"
+keywords = ["reflink", "COW", "copy on write", "copy", "btrfs", "xfs"]
+categories = ["filesystem", "os"]
+license = "MIT/Apache-2.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
