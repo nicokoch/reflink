@@ -6,4 +6,4 @@ On a high level, the new file does not actually get copied, but shares the same 
 As soon as one of the files is modified, the actual copying is done by the underlying OS.
 
 This library supports Linux, Android, OSX, ios and Windows. As soon as other OS support the functionality, support will be added.
-For implementation details, visit the [docs](dead_link).
+For implementation details, visit the [docs](https://docs.rs/reflink/*/reflink/).
