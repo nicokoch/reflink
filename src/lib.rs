@@ -17,6 +17,7 @@ extern crate winapi;
 mod sys;
 
 use std::io;
+use std::fs;
 use std::path::Path;
 
 /// Copies a file using COW semantics.
@@ -44,4 +45,18 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
         ));
     }
     sys::reflink(from, to)
+}
+
+/// Attempts to reflink a file. If the operation fails, a conbverntional copy operation is
+/// attempted as a fallback.
+///
+/// If the function reflinked a file, the return value will be `Ok(None)``.
+///
+/// If the function copied a file, the return value will be `Ok(Some(written))`.
+pub fn reflink_or_copy<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<Option<u64>> {
+    match reflink(&from, &to) {
+        Ok(()) => return Ok(None),
+        Err(_) => {},
+    }
+    fs::copy(from, to).map(|written| Some(written))
 }
