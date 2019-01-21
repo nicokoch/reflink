@@ -13,7 +13,7 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
 
     let src = fs::File::open(&from)?;
 
-    // pass O_EXCL to mimmick macos behaviour
+    // pass O_EXCL to mimic macos behaviour
     let dest = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
