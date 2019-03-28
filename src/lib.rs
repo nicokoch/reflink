@@ -22,7 +22,7 @@ use std::path::Path;
 
 /// Copies a file using COW semantics.
 ///
-/// For compability reasons with macos, the target file will be created using `OpenOptions::create_new`.
+/// For compatibility reasons with macos, the target file will be created using `OpenOptions::create_new`.
 /// If you want to overwrite existing files, make sure you manually delete the target file first
 /// if it exists.
 ///
@@ -47,7 +47,7 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
     sys::reflink(from, to)
 }
 
-/// Attempts to reflink a file. If the operation fails, a conbverntional copy operation is
+/// Attempts to reflink a file. If the operation fails, a conventional copy operation is
 /// attempted as a fallback.
 ///
 /// If the function reflinked a file, the return value will be `Ok(None)``.
