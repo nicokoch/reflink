@@ -9,11 +9,6 @@
 //! At the moment Linux, Android, OSX, ios and Windows are supported.
 //! As soon as other OS support the functionality, support will be added.
 
-#[cfg(unix)]
-extern crate libc;
-#[cfg(windows)]
-extern crate winapi;
-
 mod sys;
 
 use std::io;

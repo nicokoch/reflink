@@ -1,16 +1,14 @@
-extern crate reflink;
+use reflink;
 
-use std::time::{Instant};
-use std::io;
-use std::io::Read;
+use std::time::Instant;
+use std::io::{self, Read};
 use std::fs;
 
 fn main() {
     let mut base_file = fs::File::create("base.txt").unwrap();
     let mut src = io::repeat(65).take(100 * 1024 * 1024); // 100 MB
     io::copy(&mut src, &mut base_file).unwrap();
-    base_file.sync_all().unwrap();
-
+    
     let before_reflink = Instant::now();
     reflink::reflink("base.txt", "reflinked.txt").unwrap();
     println!("Time to reflink: {:?}", Instant::now() - before_reflink);
