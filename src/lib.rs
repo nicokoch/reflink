@@ -52,7 +52,7 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
 /// Attempts to reflink a file. If the operation fails, a conventional copy operation is
 /// attempted as a fallback.
 ///
-/// If the function reflinked a file, the return value will be `Ok(None)``.
+/// If the function reflinked a file, the return value will be `Ok(None)`.
 ///
 /// If the function copied a file, the return value will be `Ok(Some(written))`.
 ///
