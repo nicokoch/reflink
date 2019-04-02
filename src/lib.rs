@@ -21,6 +21,13 @@ use std::path::Path;
 /// If you want to overwrite existing files, make sure you manually delete the target file first
 /// if it exists.
 ///
+/// ```rust
+/// use reflink;
+/// match reflink::reflink("src.txt", "dest.txt") {
+///     Ok(()) => println!("file has been reflinked"),
+///     Err(e) => println!("error while reflinking: {:?}", e)
+/// }
+/// ```
 /// # Implementation details per platform
 /// ## Linux / Android
 /// Uses `ioctl_ficlone`. Supported file systems include btrfs and XFS (and maybe more in the future).
@@ -48,6 +55,15 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
 /// If the function reflinked a file, the return value will be `Ok(None)``.
 ///
 /// If the function copied a file, the return value will be `Ok(Some(written))`.
+///
+/// ```rust
+/// use reflink;
+/// match reflink::reflink_or_copy("src.txt", "dest.txt") {
+///     Ok(None) => println!("file has been reflinked"),
+///     Ok(Some(written)) => println!("file has been copied ({} bytes)", written),
+///     Err(e) => println!("an error occured: {:?}", e)
+/// }
+/// ```
 pub fn reflink_or_copy<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<Option<u64>> {
     match reflink(&from, &to) {
         Ok(()) => return Ok(None),
