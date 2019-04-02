@@ -66,7 +66,12 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "macos", target_os = "ios")))]
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "macos",
+    target_os = "ios"
+)))]
 pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     return Err(io::Error::new(
         io::ErrorKind::Other,
