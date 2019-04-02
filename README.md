@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/nicokoch/reflink.svg?branch=master)](https://travis-ci.org/nicokoch/reflink)
 # reflink
 Cross-platform(!) COW reflink copy of files
 
