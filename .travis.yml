@@ -5,9 +5,10 @@ rust:
   - nightly
 cache: cargo
 script:
+  - rustup target list | grep '(default)' | awk '{print $1}'
   - cargo build --verbose --all
   - cargo test --verbose --all
-  - cargo run --example compare
+  - RUST_BACKTRACE=1 cargo run --example compare
 os:
   - linux
   - osx
