@@ -2,6 +2,7 @@
 name = "reflink"
 version = "0.1.2"
 authors = ["Nicolas Koch <nioko1337@gmail.com>"]
+edition = "2018"
 description = "copy-on-write mechanism on supported file systems"
 documentation = "https://docs.rs/reflink/*/reflink/"
 homepage = "https://github.com/nicokoch/reflink"
