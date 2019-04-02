@@ -11,6 +11,10 @@ readme = "README.md"
 keywords = ["reflink", "COW", "copy", "btrfs", "xfs"]
 categories = ["filesystem", "os"]
 license = "MIT/Apache-2.0"
+exclude = ["/.travis.yml"]
+
+[badges]
+travis-ci = { repository = "nicokoch/reflink" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -1,5 +1,7 @@
-[![Build Status](https://travis-ci.org/nicokoch/reflink.svg?branch=master)](https://travis-ci.org/nicokoch/reflink)
 # reflink
+[![](http://meritbadge.herokuapp.com/reflink)](https://crates.io/crates/reflink)
+[![Build Status](https://travis-ci.org/nicokoch/reflink.svg?branch=master)](https://travis-ci.org/nicokoch/reflink)
+
 Cross-platform(!) COW reflink copy of files
 
 Some file systems implement COW (copy on write) functionality in order to speed up file copies.
