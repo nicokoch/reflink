@@ -72,9 +72,6 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     target_os = "macos",
     target_os = "ios"
 )))]
-pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
-    return Err(io::Error::new(
-        io::ErrorKind::Other,
-        "Operation not supported",
-    ));
+pub fn reflink(_from: &Path, _to: &Path) -> io::Result<()> {
+    super::_reflink_not_supported()
 }
