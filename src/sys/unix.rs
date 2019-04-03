@@ -54,8 +54,8 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
         ) -> libc::c_int;
     }
 
-    let src = cstr(from.as_ref())?;
-    let dest = cstr(to.as_ref())?;
+    let src = cstr(from)?;
+    let dest = cstr(to)?;
 
     let ret = unsafe { clonefile(src.as_ptr(), dest.as_ptr(), CLONE_NOOWNERCOPY) };
 

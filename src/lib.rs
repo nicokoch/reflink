@@ -65,9 +65,9 @@ pub fn reflink<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<()>
 /// }
 /// ```
 pub fn reflink_or_copy<P: AsRef<Path>, Q: AsRef<Path>>(from: P, to: Q) -> io::Result<Option<u64>> {
-    match reflink(&from, &to) {
-        Ok(()) => return Ok(None),
-        Err(_) => {}
+    if let Ok(()) = reflink(&from, &to) {
+        Ok(None)
+    } else {
+        fs::copy(from, to).map(Some)
     }
-    fs::copy(from, to).map(|written| Some(written))
 }
