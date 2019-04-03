@@ -12,5 +12,5 @@ cache: cargo
 script:
   - rustup target list | grep '(default)' | awk '{print $1}'
   - cargo build --verbose --all
-  - cargo test --verbose --all
+  - cargo test --verbose --all --no-fail-fast -- --nocapture
   - RUST_BACKTRACE=1 cargo run --example compare
