@@ -42,8 +42,8 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     if src_is_sparse {
         try_cleanup!(dest.set_sparse(), to);
     }
-    
-    let src_integrity_info = src.get_integrity_information()?;
+
+    let src_integrity_info = try_cleanup!(src.get_integrity_information(), to);
     let cluster_size = src_integrity_info.ClusterSizeInBytes as i64;
     if cluster_size != 0 {
         // Cluster size must either be 4K or 64K (restricted by ReFS)
