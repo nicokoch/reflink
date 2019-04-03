@@ -30,7 +30,6 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     // Inspired by https://github.com/0xbadfca11/reflink/blob/master/reflink.cpp
     let src = fs::File::open(&from)?;
 
-    let src_integrity_info = src.get_integrity_information()?;
     let src_metadata = src.metadata()?;
     let src_file_size = src_metadata.file_size();
     let src_is_sparse = src_metadata.file_attributes() & FILE_ATTRIBUTE_SPARSE_FILE > 0;
@@ -43,6 +42,8 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     if src_is_sparse {
         try_cleanup!(dest.set_sparse(), to);
     }
+    
+    let src_integrity_info = src.get_integrity_information()?;
     let cluster_size = src_integrity_info.ClusterSizeInBytes as i64;
     if cluster_size != 0 {
         // Cluster size must either be 4K or 64K (restricted by ReFS)
