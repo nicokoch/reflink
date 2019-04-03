@@ -17,7 +17,7 @@ use winapi::um::winnt::{FILE_ATTRIBUTE_SPARSE_FILE, FILE_SUPPORTS_BLOCK_REFCOUNT
 macro_rules! try_cleanup {
     ($expr:expr, $dest:ident) => {
         match $expr {
-            Ok(()) => {}
+            Ok(val) => val,
             Err(err) => {
                 let _ = fs::remove_file($dest);
                 return Err(err);

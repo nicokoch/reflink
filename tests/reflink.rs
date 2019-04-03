@@ -38,12 +38,13 @@ fn reflink_dest_is_dir() -> io::Result<()> {
     let dir = tempdir()?;
     let src_file_path = dir.path().join("src.txt");
     let _src_file = File::create(&src_file_path)?;
-
     match reflink(&src_file_path, dir.path()) {
         Ok(()) => panic!(),
         Err(e) => {
             println!("{:?}", e);
-            assert_eq!(e.kind(), io::ErrorKind::AlreadyExists)
+            if !cfg!(windows) {
+                assert_eq!(e.kind(), io::ErrorKind::AlreadyExists);
+            }
         }
     }
     Ok(())
