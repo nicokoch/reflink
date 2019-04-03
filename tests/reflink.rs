@@ -41,7 +41,7 @@ fn reflink_dest_is_dir() -> io::Result<()>{
 
     match reflink(&src_file_path, dir.path()) {
         Ok(()) => panic!(),
-        Err(e) => assert!(e.kind() == io::ErrorKind::AlreadyExists),
+        Err(e) => assert_eq!(e.kind(), io::ErrorKind::AlreadyExists),
     }
     Ok(())
 }
@@ -53,7 +53,7 @@ fn reflink_src_is_dir() -> io::Result<()>{
 
     match reflink(dir.path(), &dest_file_path) {
         Ok(()) => panic!(),
-        Err(e) => assert!(e.kind() == io::ErrorKind::InvalidInput),
+        Err(e) => assert_eq!(e.kind(), io::ErrorKind::InvalidInput),
     }
     Ok(())
 }
@@ -69,7 +69,7 @@ fn reflink_existing_dest_results_in_error() -> io::Result<()>{
 
     match reflink(&src_file_path, &dest_file_path) {
         Ok(()) => panic!(),
-        Err(e) => assert!(e.kind() == io::ErrorKind::AlreadyExists)
+        Err(e) => assert_eq!(e.kind(), io::ErrorKind::AlreadyExists)
     }
     Ok(())
 }
