@@ -1,8 +1,8 @@
 use reflink;
 
-use std::time::Instant;
-use std::io::{self, Read};
 use std::fs;
+use std::io::{self, Read};
+use std::time::Instant;
 
 fn main() {
     let mut base_file = fs::File::create("base.txt").unwrap();
@@ -11,7 +11,7 @@ fn main() {
 
     let before_reflink = Instant::now();
     match reflink::reflink("base.txt", "reflinked.txt") {
-        Ok(()) => {},
+        Ok(()) => {}
         Err(e) => {
             println!("Error during reflinking:\n{:?}", e);
             fs::remove_file("base.txt").unwrap();

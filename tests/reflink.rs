@@ -1,7 +1,7 @@
-use tempfile::tempdir;
 use std::fs::File;
-use std::io::{self, Write, Read};
+use std::io::{self, Read, Write};
 use std::path::Path;
+use tempfile::tempdir;
 
 use reflink::{reflink, reflink_or_copy};
 
@@ -20,7 +20,7 @@ fn reflink_file_does_not_exist() {
 }
 
 #[test]
-fn reflink_src_does_not_exist() -> io::Result<()>{
+fn reflink_src_does_not_exist() -> io::Result<()> {
     let tmpdir = tempdir()?;
     let from = Path::new("test/nonexistent-bogus-path");
     let to = tmpdir.path().join("out.txt");
@@ -34,7 +34,7 @@ fn reflink_src_does_not_exist() -> io::Result<()>{
 }
 
 #[test]
-fn reflink_dest_is_dir() -> io::Result<()>{
+fn reflink_dest_is_dir() -> io::Result<()> {
     let dir = tempdir()?;
     let src_file_path = dir.path().join("src.txt");
     let _src_file = File::create(&src_file_path)?;
@@ -50,7 +50,7 @@ fn reflink_dest_is_dir() -> io::Result<()>{
 }
 
 #[test]
-fn reflink_src_is_dir() -> io::Result<()>{
+fn reflink_src_is_dir() -> io::Result<()> {
     let dir = tempdir()?;
     let dest_file_path = dir.path().join("dest.txt");
 
@@ -65,7 +65,7 @@ fn reflink_src_is_dir() -> io::Result<()>{
 }
 
 #[test]
-fn reflink_existing_dest_results_in_error() -> io::Result<()>{
+fn reflink_existing_dest_results_in_error() -> io::Result<()> {
     let dir = tempdir()?;
     let src_file_path = dir.path().join("src.txt");
     let dest_file_path = dir.path().join("dest.txt");
@@ -93,7 +93,7 @@ fn reflink_ok() -> io::Result<()> {
     src_file.write(b"this is a test")?;
 
     match reflink(&src_file_path, &dest_file_path) {
-        Ok(()) => {},
+        Ok(()) => {}
         Err(e) => {
             println!("{:?}", e);
             // do not panic for now, CI envs are old and will probably error out
@@ -118,7 +118,9 @@ fn reflink_or_copy_ok() -> io::Result<()> {
     File::open(&out)?.read_to_end(&mut v)?;
     assert_eq!(v, b"hello");
 
-    assert_eq!(input.metadata()?.permissions(),
-               out.metadata()?.permissions());
+    assert_eq!(
+        input.metadata()?.permissions(),
+        out.metadata()?.permissions()
+    );
     Ok(())
 }
