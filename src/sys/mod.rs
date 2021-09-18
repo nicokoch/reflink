@@ -11,6 +11,10 @@ mod others;
 #[cfg(not(any(unix, windows)))]
 pub use self::others::reflink;
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+#[macro_use]
+mod ioctl_fragment;
+
 fn _reflink_not_supported() -> std::io::Result<()> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Other,
