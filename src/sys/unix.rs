@@ -3,11 +3,9 @@ use std::path::Path;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
+    use crate::request_code_write;
     use std::fs;
     use std::os::unix::io::AsRawFd;
-
-    // TODO is this equal on all archs? Just tested on x86_64 and x86.
-    macro_rules! IOCTL_FICLONE { () => (0x40049409) };
 
     let src = fs::File::open(&from)?;
 
@@ -17,8 +15,17 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
         .create_new(true)
         .open(&to)?;
     let ret = unsafe {
+        // from /usr/include/linux/fs.h:
+        // #define FICLONE		_IOW(0x94, 9, int)
+        const FICLONE_TYPE: u8 = 0x94;
+        const FICLONE_NR: u8 = 9;
+        const FICLONE_SIZE: usize = std::mem::size_of::<libc::c_int>();
         // http://man7.org/linux/man-pages/man2/ioctl_ficlonerange.2.html
-        libc::ioctl(dest.as_raw_fd(), IOCTL_FICLONE!(), src.as_raw_fd())
+        libc::ioctl(
+            dest.as_raw_fd(),
+            request_code_write!(FICLONE_TYPE, FICLONE_NR, FICLONE_SIZE),
+            src.as_raw_fd(),
+        )
     };
 
     if ret == -1 {
