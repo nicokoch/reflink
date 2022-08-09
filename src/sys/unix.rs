@@ -7,7 +7,11 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     use std::os::unix::io::AsRawFd;
 
     // TODO is this equal on all archs? Just tested on x86_64 and x86.
-    macro_rules! IOCTL_FICLONE { () => (0x40049409) };
+    macro_rules! IOCTL_FICLONE {
+        () => {
+            0x40049409
+        };
+    };
 
     let src = fs::File::open(&from)?;
 
@@ -73,5 +77,5 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     target_os = "ios"
 )))]
 pub fn reflink(_from: &Path, _to: &Path) -> io::Result<()> {
-    super::_reflink_not_supported()
+    super::reflink_not_supported()
 }
