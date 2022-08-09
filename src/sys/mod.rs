@@ -1,17 +1,17 @@
-#[cfg(unix)]
-mod unix;
-#[cfg(unix)]
-pub use self::unix::reflink;
+use cfg_if::cfg_if;
 
-#[cfg(windows)]
-mod windows;
-#[cfg(windows)]
-pub use self::windows::reflink;
-
-#[cfg(not(any(unix, windows)))]
-mod others;
-#[cfg(not(any(unix, windows)))]
-pub use self::others::reflink;
+cfg_if! {
+    if #[cfg(unix)] {
+        mod unix;
+        pub use unix::reflink;
+    } else if #[cfg(windows)] {
+        mod windows;
+        pub use windows::reflink;
+    } else {
+        mod others;
+        pub use others::reflink;
+    }
+}
 
 #[allow(dead_code)]
 fn reflink_not_supported() -> std::io::Result<()> {
