@@ -16,7 +16,7 @@ cfg_if! {
 #[allow(dead_code)]
 fn reflink_not_supported() -> std::io::Result<()> {
     Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
+        std::io::ErrorKind::Unsupported,
         format!(
             "Operation not supported on {}-{}-{}",
             std::env::consts::ARCH,
