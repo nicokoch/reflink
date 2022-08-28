@@ -1,60 +1,55 @@
-use std::cmp;
-use std::fs;
-use std::io;
-use std::mem;
-use std::os::windows::fs::MetadataExt;
-use std::os::windows::io::AsRawHandle;
-use std::path::Path;
-use std::ptr;
-
-use winapi::um::fileapi::GetVolumeInformationByHandleW;
-use winapi::um::ioapiset::DeviceIoControl;
-use winapi::um::winioctl::{
-    FSCTL_GET_INTEGRITY_INFORMATION, FSCTL_SET_INTEGRITY_INFORMATION, FSCTL_SET_SPARSE,
+use std::{
+    convert::TryInto,
+    fs::File,
+    io,
+    mem::{self, MaybeUninit},
+    os::windows::fs::MetadataExt,
+    os::windows::io::{AsRawHandle, RawHandle},
+    path::Path,
+    ptr,
 };
-use winapi::um::winnt::{FILE_ATTRIBUTE_SPARSE_FILE, FILE_SUPPORTS_BLOCK_REFCOUNTING};
 
-macro_rules! try_cleanup {
-    ($expr:expr, $dest:ident) => {
-        match $expr {
-            Ok(val) => val,
-            Err(err) => {
-                let _ = fs::remove_file($dest);
-                return Err(err);
-            }
-        }
-    };
-}
+use winapi::um::{
+    fileapi::GetVolumeInformationByHandleW,
+    ioapiset::DeviceIoControl,
+    winioctl::{
+        FSCTL_GET_INTEGRITY_INFORMATION, FSCTL_SET_INTEGRITY_INFORMATION, FSCTL_SET_SPARSE,
+    },
+    winnt::{FILE_ATTRIBUTE_SPARSE_FILE, FILE_SUPPORTS_BLOCK_REFCOUNTING},
+};
+
+use super::utility::AutoRemovedFile;
 
 pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     // Inspired by https://github.com/0xbadfca11/reflink/blob/master/reflink.cpp
-    let src = fs::File::open(&from)?;
+    let src = File::open(&from)?;
 
     let src_metadata = src.metadata()?;
     let src_file_size = src_metadata.file_size();
-    let src_is_sparse = src_metadata.file_attributes() & FILE_ATTRIBUTE_SPARSE_FILE > 0;
+    let src_is_sparse = (src_metadata.file_attributes() & FILE_ATTRIBUTE_SPARSE_FILE) != 0;
 
-    let dest = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&to)?;
+    let dest = AutoRemovedFile::create_new(to)?;
 
     if src_is_sparse {
-        try_cleanup!(dest.set_sparse(), to);
+        dest.set_sparse()?;
     }
 
-    let src_integrity_info = try_cleanup!(src.get_integrity_information(), to);
-    let cluster_size = src_integrity_info.ClusterSizeInBytes as i64;
+    let src_integrity_info = src.get_integrity_information()?;
+    let cluster_size: i64 = src_integrity_info.ClusterSizeInBytes.try_into().unwrap();
     if cluster_size != 0 {
-        // Cluster size must either be 4K or 64K (restricted by ReFS)
-        assert!(cluster_size == 4 * 1024 || cluster_size == 64 * 1024);
+        if cluster_size != 4 * 1024 && cluster_size != 64 * 1024 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Cluster size of source must either be 4K or 64K (restricted by ReFS)",
+            ));
+        }
         // Copy over integrity information. Not sure if this is required.
         let mut dest_integrity_info = ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER {
             ChecksumAlgorithm: src_integrity_info.ChecksumAlgorithm,
             Reserved: src_integrity_info.Reserved,
             Flags: src_integrity_info.Flags,
         };
-        try_cleanup!(dest.set_integrity_information(&mut dest_integrity_info), to);
+        dest.set_integrity_information(&mut dest_integrity_info)?;
     }
 
     // file_size must be sufficient to hold the data.
@@ -62,19 +57,21 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
     // Later on, we round up the bytes to copy in order to end at a cluster boundary.
     // This might very well result in us cloning past the file end.
     // Let's hope windows api sanitizes this, because otherwise a clean implementation is not really possible.
-    try_cleanup!(dest.set_len(src_file_size), to);
+    dest.as_inner_file().set_len(src_file_size)?;
 
     // Preparation done, now reflink
-    let mut dup_extent: ffi::DUPLICATE_EXTENTS_DATA = unsafe { mem::uninitialized() };
-    dup_extent.FileHandle = src.as_raw_handle();
+    let mut dup_extent: MaybeUninit<ffi::DUPLICATE_EXTENTS_DATA> = MaybeUninit::uninit();
+    unsafe {
+        (*dup_extent.as_mut_ptr()).FileHandle = src.as_raw_handle();
+    }
 
     // We must end at a cluster boundary
     let total_copy_len: i64 = {
         if cluster_size == 0 {
-            src_file_size as i64
+            src_file_size.try_into().unwrap()
         } else {
             // Round to the next cluster size
-            round_up(src_file_size as i64, cluster_size)
+            round_up(src_file_size.try_into().unwrap(), cluster_size)
         }
     };
 
@@ -86,23 +83,25 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
         (4 * 1024 * 1024 * 1024) - cluster_size
     };
     while bytes_copied < total_copy_len {
-        let bytes_to_copy = cmp::min(total_copy_len, max_copy_len);
+        let bytes_to_copy = total_copy_len.min(max_copy_len);
         if cluster_size != 0 {
             debug_assert_eq!(bytes_to_copy % cluster_size, 0);
             debug_assert_eq!(bytes_copied % cluster_size, 0);
         }
         unsafe {
-            *dup_extent.SourceFileOffset.QuadPart_mut() = bytes_copied;
-            *dup_extent.TargetFileOffset.QuadPart_mut() = bytes_copied;
-            *dup_extent.ByteCount.QuadPart_mut() = bytes_to_copy;
+            *(*dup_extent.as_mut_ptr()).SourceFileOffset.QuadPart_mut() = bytes_copied;
+            *(*dup_extent.as_mut_ptr()).TargetFileOffset.QuadPart_mut() = bytes_copied;
+            *(*dup_extent.as_mut_ptr()).ByteCount.QuadPart_mut() = bytes_to_copy;
         }
         let mut bytes_returned = 0u32;
         let res = unsafe {
             DeviceIoControl(
                 dest.as_raw_handle() as _,
                 ffi::FSCTL_DUPLICATE_EXTENTS_TO_FILE,
-                &mut dup_extent as *mut _ as *mut _,
-                mem::size_of::<ffi::DUPLICATE_EXTENTS_DATA>() as u32,
+                dup_extent.as_mut_ptr() as *mut _,
+                mem::size_of::<ffi::DUPLICATE_EXTENTS_DATA>()
+                    .try_into()
+                    .unwrap(),
                 ptr::null_mut(),
                 0,
                 &mut bytes_returned as *mut _,
@@ -110,11 +109,11 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
             )
         };
         if res == 0 {
-            let _ = fs::remove_file(to);
             return Err(io::Error::last_os_error());
         }
         bytes_copied += bytes_to_copy;
     }
+    dest.persist();
     Ok(())
 }
 
@@ -129,7 +128,7 @@ trait FileExt {
     fn is_block_cloning_supported(&self) -> io::Result<bool>;
 }
 
-impl FileExt for fs::File {
+impl FileExt for File {
     fn set_sparse(&self) -> io::Result<()> {
         let mut bytes_returned = 0u32;
         let res = unsafe {
@@ -154,21 +153,24 @@ impl FileExt for fs::File {
     fn get_integrity_information(&self) -> io::Result<ffi::FSCTL_GET_INTEGRITY_INFORMATION_BUFFER> {
         let mut bytes_returned = 0u32;
         unsafe {
-            let mut integrity_info: ffi::FSCTL_GET_INTEGRITY_INFORMATION_BUFFER = mem::zeroed();
+            let mut integrity_info: MaybeUninit<ffi::FSCTL_GET_INTEGRITY_INFORMATION_BUFFER> =
+                MaybeUninit::uninit();
             let res = DeviceIoControl(
                 self.as_raw_handle() as _,
                 FSCTL_GET_INTEGRITY_INFORMATION,
                 ptr::null_mut(),
                 0,
-                &mut integrity_info as *mut _ as *mut _,
-                mem::size_of::<ffi::FSCTL_GET_INTEGRITY_INFORMATION_BUFFER>() as u32,
+                integrity_info.as_mut_ptr() as *mut _,
+                mem::size_of::<ffi::FSCTL_GET_INTEGRITY_INFORMATION_BUFFER>()
+                    .try_into()
+                    .unwrap(),
                 &mut bytes_returned as *mut _,
                 ptr::null_mut(),
             );
             if res == 0 {
                 Err(io::Error::last_os_error())
             } else {
-                Ok(integrity_info)
+                Ok(unsafe { integrity_info.assume_init() })
             }
         }
     }
@@ -182,7 +184,9 @@ impl FileExt for fs::File {
                 self.as_raw_handle() as _,
                 FSCTL_SET_INTEGRITY_INFORMATION,
                 integrity_info as *mut _ as *mut _,
-                mem::size_of::<ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER>() as u32,
+                mem::size_of::<ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER>()
+                    .try_into()
+                    .unwrap(),
                 ptr::null_mut(),
                 0,
                 ptr::null_mut(),
@@ -213,19 +217,47 @@ impl FileExt for fs::File {
         if res == 0 {
             Err(io::Error::last_os_error())
         } else {
-            println!("{:b}", flags);
-            if flags & FILE_SUPPORTS_BLOCK_REFCOUNTING > 0 {
-                Ok(true)
-            } else {
-                Ok(false)
-            }
+            Ok((flags & FILE_SUPPORTS_BLOCK_REFCOUNTING) != 0)
         }
     }
 }
 
-/// Rounds `num_to_round` to the next multiple of `multiple`, if `mutliple is a power of 2`
+impl AsRawHandle for AutoRemovedFile {
+    fn as_raw_handle(&self) -> RawHandle {
+        self.as_inner_file().as_raw_handle()
+    }
+}
+
+impl FileExt for AutoRemovedFile {
+    fn set_sparse(&self) -> io::Result<()> {
+        self.as_inner_file().set_sparse()
+    }
+
+    fn get_integrity_information(&self) -> io::Result<ffi::FSCTL_GET_INTEGRITY_INFORMATION_BUFFER> {
+        self.as_inner_file().get_integrity_information()
+    }
+
+    fn set_integrity_information(
+        &self,
+        integrity_info: &mut ffi::FSCTL_SET_INTEGRITY_INFORMATION_BUFFER,
+    ) -> io::Result<()> {
+        self.as_inner_file()
+            .set_integrity_information(integrity_info)
+    }
+
+    fn is_block_cloning_supported(&self) -> io::Result<bool> {
+        self.as_inner_file().is_block_cloning_supported()
+    }
+}
+
+/// Rounds `num_to_round` to the next multiple of `multiple`
+///
+/// # Precondition
+///  - `multiple` > 0
+///  - `mutliple` is a power of 2
 fn round_up(num_to_round: i64, multiple: i64) -> i64 {
-    assert!(multiple != 0 && ((multiple & (multiple - 1)) == 0));
+    debug_assert!(multiple > 0);
+    debug_assert_eq!((multiple & (multiple - 1)), 0);
     (num_to_round + multiple - 1) & -multiple
 }
 
@@ -233,8 +265,10 @@ fn round_up(num_to_round: i64, multiple: i64) -> i64 {
 #[allow(non_snake_case)]
 mod ffi {
     use std::os::windows::raw::HANDLE;
-    use winapi::shared::minwindef::{DWORD, WORD};
-    use winapi::shared::ntdef::LARGE_INTEGER;
+    use winapi::shared::{
+        minwindef::{DWORD, WORD},
+        ntdef::LARGE_INTEGER,
+    };
 
     pub const FSCTL_DUPLICATE_EXTENTS_TO_FILE: u32 = 0x98344;
 

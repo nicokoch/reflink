@@ -1,24 +1,22 @@
-#[cfg(unix)]
-mod unix;
-#[cfg(unix)]
-pub use self::unix::reflink;
-#[cfg(windows)]
-mod windows;
-#[cfg(windows)]
-pub use self::windows::reflink;
-#[cfg(not(any(unix, windows)))]
-mod others;
-#[cfg(not(any(unix, windows)))]
-pub use self::others::reflink;
+use std::path::Path;
 
-fn _reflink_not_supported() -> std::io::Result<()> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        format!(
-            "Operation not supported on {}-{}-{}",
-            std::env::consts::ARCH,
-            std::env::consts::OS,
-            std::env::consts::FAMILY
-        ),
-    ))
+use cfg_if::cfg_if;
+
+mod utility;
+
+cfg_if! {
+    if #[cfg(unix)] {
+        mod unix;
+        pub use unix::reflink;
+    } else if #[cfg(windows)] {
+        mod windows;
+        pub use windows::reflink;
+    } else {
+        use reflink_not_supported as reflink;
+    }
+}
+
+#[allow(dead_code)]
+fn reflink_not_supported(_from: &Path, _to: &Path) -> std::io::Result<()> {
+    Err(std::io::ErrorKind::Unsupported.into())
 }

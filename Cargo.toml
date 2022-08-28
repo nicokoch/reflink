@@ -16,11 +16,17 @@ exclude = ["/.travis.yml"]
 [badges]
 travis-ci = { repository = "nicokoch/reflink" }
 
+[dependencies]
+cfg-if = "1.0.0"
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ioctl-sys = "0.8.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["ioapiset", "winioctl", "fileapi"] }
 
 [dev-dependencies]
-tempfile = "3"
+tempfile = "3.3.0"
