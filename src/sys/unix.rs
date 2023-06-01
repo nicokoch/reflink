@@ -3,6 +3,7 @@ use std::path::Path;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
+    use std::convert::TryInto;
     use std::fs;
     use std::os::unix::io::AsRawFd;
 
@@ -18,7 +19,7 @@ pub fn reflink(from: &Path, to: &Path) -> io::Result<()> {
         .open(&to)?;
     let ret = unsafe {
         // http://man7.org/linux/man-pages/man2/ioctl_ficlonerange.2.html
-        libc::ioctl(dest.as_raw_fd(), IOCTL_FICLONE!(), src.as_raw_fd())
+        libc::ioctl(dest.as_raw_fd(), IOCTL_FICLONE!().try_into().unwrap(), src.as_raw_fd())
     };
 
     if ret == -1 {
