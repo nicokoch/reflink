@@ -56,6 +56,7 @@ use std::path::Path;
 /// NOTE that it generates a temporary file and is not atomic.
 #[inline(always)]
 pub fn reflink(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
+    #[cfg_attr(feature = "tracing", tracing_attributes::instrument(name = "reflink"))]
     fn inner(from: &Path, to: &Path) -> io::Result<()> {
         if !from.is_file() {
             Err(io::Error::new(
@@ -86,11 +87,23 @@ pub fn reflink(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
 /// ```
 #[inline(always)]
 pub fn reflink_or_copy(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<Option<u64>> {
+    #[cfg_attr(
+        feature = "tracing",
+        tracing_attributes::instrument(name = "reflink_or_copy")
+    )]
     fn inner(from: &Path, to: &Path) -> io::Result<Option<u64>> {
-        if let Ok(()) = reflink(from, to) {
-            Ok(None)
-        } else {
+        if !from.is_file() {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the source path is not an existing regular file",
+            ))
+        } else if let Err(_err) = sys::reflink(from, to) {
+            #[cfg(feature = "tracing")]
+            tracing::warn!(?_err, "Failed to reflink, fallback to fs::copy");
+
             fs::copy(from, to).map(Some)
+        } else {
+            Ok(None)
         }
     }
 
