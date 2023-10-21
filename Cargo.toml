@@ -17,8 +17,10 @@ cfg-if = "1.0.0"
 tracing = { version = "0.1.37", default-features = false, optional = true }
 tracing-attributes = { version = "0.1.26", optional = true }
 
-[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies]
-ioctl-sys = "0.8.0"
+[target.'cfg(any(target_os = "linux", target_os = "android"))'.dependencies.rustix]
+version = "0.38.20"
+default-features = false
+features = ["fs", "std"]
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.51.1", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_Ioctl", "Win32_System_IO", "Win32_System_SystemServices"] }

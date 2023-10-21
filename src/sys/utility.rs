@@ -7,7 +7,7 @@ use std::{
 };
 
 #[cfg(unix)]
-use std::os::unix::io::{AsRawFd, RawFd};
+use std::os::unix::io::{AsFd, BorrowedFd, AsRawFd, RawFd};
 
 #[derive(Debug)]
 pub(super) struct AutoRemovedFile {
@@ -38,6 +38,13 @@ impl AutoRemovedFile {
 
     pub fn as_inner_file(&self) -> &File {
         self.inner.as_ref().unwrap()
+    }
+}
+
+#[cfg(unix)]
+impl AsFd for AutoRemovedFile {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.as_inner_file().as_fd()
     }
 }
 
